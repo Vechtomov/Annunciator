@@ -1,4 +1,4 @@
-﻿namespace EgeAnnunciator
+﻿namespace Annunciator
 {
     /// <summary>
     /// Класс для установки правильного окончания у слов 

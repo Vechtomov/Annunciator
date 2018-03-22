@@ -1,33 +1,42 @@
 ﻿using System;
 using VkAnnunciator.Log;
+using VkAnnunciator.Settings;
 using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Threading.Tasks;
 
-namespace EgeAnnunciator
+namespace Annunciator
 {
     class Program
     {
+        static ILogger applicationLogger = InitializeFileLogger("Application");
+
         static void Main(string[] args)
         {
-            ILogger logger = null;
             try {
-                string annunciatorSettingsJson = File.ReadAllText("AnnunciatorSettings.txt");
+                // Считываем файлы конфигурации
+                string annunciatorsJson = File.ReadAllText("AnnunciatorsSettings.txt");
                 string vkSettingsJson = File.ReadAllText("VkSettings.txt");
 
-                JObject annunciatorSettingsObject = JObject.Parse(annunciatorSettingsJson);
+                // Преобразуем в JObject
+                JObject annunciatorsObject = JObject.Parse(annunciatorsJson);
                 JObject vkSettingsObject = JObject.Parse(vkSettingsJson);
 
-                AnnunciatorSettings annunciatorSettings = JsonConvert.DeserializeObject<AnnunciatorSettings>(annunciatorSettingsObject.ToString());
+                // Десериализуем объекты
+                MultipleAnnunciatorsSettings annunciatorsSettings = JsonConvert.DeserializeObject<MultipleAnnunciatorsSettings>(annunciatorsObject.ToString());
                 VkSettings vkSettings = JsonConvert.DeserializeObject<VkSettings>(vkSettingsObject.ToString());
 
-                logger = InitializeFileLogger(annunciatorSettings.Id.ToString());
-                VkAnnunciator annunciator = new VkAnnunciator(annunciatorSettings, vkSettings, logger);
-                
-                annunciator.Start();
+                // Запускаем параллельно сигнализаторы
+                Parallel.ForEach(annunciatorsSettings.Annunciators, a => {
+                    ILogger logger = InitializeFileLogger(a.Id.ToString());
+                    VkAnnunciator annunciator = new VkAnnunciator(a, vkSettings, logger);
+                    applicationLogger.Log(a.Id + " created " + DateTime.Now.ToLongTimeString());
+                    annunciator.Start();
+                });
             }
-            catch(Exception ex) {
-                logger?.Log(ex.Message);
+            catch (Exception ex) {
+                applicationLogger?.Log(ex.Message);
             }
         }
 

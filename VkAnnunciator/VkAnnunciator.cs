@@ -5,9 +5,14 @@ using System.Linq;
 using System;
 using VkAnnunciator.Log;
 using System.Threading;
+using VkAnnunciator.Settings;
+using System.Threading.Tasks;
 
-namespace EgeAnnunciator
+namespace Annunciator
 {
+    /// <summary>
+    /// Сигнализатор - посылает пользователю сообщения с заданным интервалом
+    /// </summary>
     public class VkAnnunciator
     {
         private VkApi vkApi = new VkApi();
@@ -15,12 +20,13 @@ namespace EgeAnnunciator
         private VkSettings vk;
         private AnnunciatorSettings settings;
 
-        private DateTime lastSend = new DateTime(2000, 1, 1);
-        private DateTime lastEgeSend = new DateTime(2000, 1, 1);
+        private DateTime lastPhrasesSend = new DateTime(2000, 1, 1);
+        private DateTime lastSubjectSend = new DateTime(2000, 1, 1);
 
         private int times = 0;
-        private Word days = new Word("день", "дня", "дней");
-        private Word hours = new Word("час", "часа", "часов");
+        private Word days = null;
+        private Word hours = null;
+        private Word minutes = null;
         private Word left = new Word("остался", "осталось", "осталось");
 
         private ILogger Logger;
@@ -39,9 +45,18 @@ namespace EgeAnnunciator
             };
 
             vkApi.Authorize(param);
+
+            if (settings.AnnunciationFormat.Contains("d"))
+                days = new Word("день", "дня", "дней");
+
+            if (settings.AnnunciationFormat.Contains("h"))
+                hours = new Word("час", "часа", "часов");
+
+            if (settings.AnnunciationFormat.Contains("m"))
+                minutes = new Word("минута", "минуты", "минут");
+
             Log($"Initialize annunciator: {this.settings.Id}");
         }
-
         public void Start()
         {
             while (true) {
@@ -49,7 +64,7 @@ namespace EgeAnnunciator
                     if (settings.BeginHour <= DateTime.Now.Hour && DateTime.Now.Hour <= settings.EndHour) {
                         Check();
                     }
-                    Thread.Sleep(settings.Interval);
+                    Thread.Sleep(settings.RequestInterval);
                 }
                 catch (Exception ex) {
                     Log(ex.Message);
@@ -59,9 +74,10 @@ namespace EgeAnnunciator
 
         public void Check()
         {
+
             // Если с последней отправки прошло меньше MessagesInterval минут, то ничего не делаем
-            if ((DateTime.Now - lastSend).TotalMinutes < settings.MessagesInterval) {
-                Log($"After the last sending has gone {Convert.ToInt32((DateTime.Now - lastSend).TotalMinutes)} minutes.");
+            if ((DateTime.Now - lastPhrasesSend) < settings.PhrasesInterval) {
+                Log($"After the last sending has gone {Convert.ToInt32((DateTime.Now - lastPhrasesSend).TotalMinutes)} minutes.");
                 return;
             }
 
@@ -69,24 +85,24 @@ namespace EgeAnnunciator
             var user = vkApi.Users.Get(new long[] { settings.Id }, ProfileFields.Online | ProfileFields.OnlineMobile).FirstOrDefault();
 
             // Если пользователь онлайн, то отправляем ему сообщение
-            if ((user.Online.HasValue && user.Online.Value) || (user.OnlineMobile.HasValue && user.OnlineMobile.Value)) {
+            if ((user.Online != null && (bool)user.Online) || (user.OnlineMobile != null && (bool)user.OnlineMobile)) {
 
                 string message = string.Empty;
-                bool isEgeSend = false;
+                bool isSubjectSend = false;
 
-                // Если с последней отправки сообщения о ЕГЭ прошло больше EgeMessagesInterval часов, 
+                // Если с последней отправки сообщения о событии прошло больше AnnunciationMessagesInterval, 
                 // то устанавливаем сообщение и флаг
-                if ((DateTime.Now - lastEgeSend).TotalHours > settings.EgeMessagesInterval) {
+                if ((DateTime.Now - lastSubjectSend) > settings.AnnunciationMessagesInterval) {
 
                     foreach (var subject in settings.Subjects) {
                         TimeSpan timeSpan = subject.Date - DateTime.Now;
-                        message += GetString(subject.GenitiveName, timeSpan) + Environment.NewLine;
+                        message += GetAnnunciationMessage(subject.GenitiveName, timeSpan) + Environment.NewLine;
                     }
 
-                    isEgeSend = true;
+                    isSubjectSend = true;
                 }
                 else {
-                    message = GetMessage(times++);
+                    message = GetPhrase(times++);
                 }
 
                 // Отправка сообщения
@@ -95,11 +111,11 @@ namespace EgeAnnunciator
                     UserId = user.Id
                 });
 
-                if (isEgeSend) {
-                    lastEgeSend = DateTime.Now;
+                if (isSubjectSend) {
+                    lastSubjectSend = DateTime.Now;
                 }
                 else {
-                    lastSend = DateTime.Now;
+                    lastPhrasesSend = DateTime.Now;
                 }
 
                 // Логируем
@@ -112,21 +128,124 @@ namespace EgeAnnunciator
             }
         }
 
+        #region Async
+        public async Task StartAsync()
+        {
+            while (true) {
+                try {
+                    if (settings.BeginHour <= DateTime.Now.Hour && DateTime.Now.Hour <= settings.EndHour) {
+                        await CheckAsync();
+                    }
+                    Thread.Sleep(settings.RequestInterval);
+                }
+                catch (Exception ex) {
+                    Log(ex.Message);
+                }
+            }
+        }
+
+        public async Task CheckAsync()
+        {
+            await Task.Run(async () => {
+                // Если с последней отправки прошло меньше MessagesInterval минут, то ничего не делаем
+                if ((DateTime.Now - lastPhrasesSend) < settings.PhrasesInterval) {
+                    Log($"After the last sending has gone {Convert.ToInt32((DateTime.Now - lastPhrasesSend).TotalMinutes)} minutes.");
+                    return;
+                }
+
+                // Находим пользователя
+
+                var users = await vkApi.Users.GetAsync(new long[] { settings.Id }, ProfileFields.Online | ProfileFields.OnlineMobile);
+                var user = users.FirstOrDefault();
+
+                // Если пользователь онлайн, то отправляем ему сообщение
+                //if ((user.Online.HasValue && user.Online.Value) || (user.OnlineMobile.HasValue && user.OnlineMobile.Value)) {
+                if ((user.Online != null && (bool)user.Online) || (user.OnlineMobile != null && (bool)user.OnlineMobile)) {
+
+                    string message = string.Empty;
+                    bool isSubjectSend = false;
+
+                    // Если с последней отправки сообщения о событии прошло больше AnnunciationMessagesInterval, 
+                    // то устанавливаем сообщение и флаг
+                    if ((DateTime.Now - lastSubjectSend) > settings.AnnunciationMessagesInterval) {
+
+                        foreach (var subject in settings.Subjects) {
+                            TimeSpan timeSpan = subject.Date - DateTime.Now;
+                            message += GetAnnunciationMessage(subject.GenitiveName, timeSpan) + Environment.NewLine;
+                        }
+
+                        isSubjectSend = true;
+                    }
+                    else {
+                        message = GetPhrase(times++);
+                    }
+
+                    // Отправка сообщения
+                    await vkApi.Messages.SendAsync(new MessagesSendParams {
+                        Message = message,
+                        UserId = user.Id
+                    });
+
+                    if (isSubjectSend) {
+                        lastSubjectSend = DateTime.Now;
+                    }
+                    else {
+                        lastPhrasesSend = DateTime.Now;
+                    }
+
+                    // Логируем
+                    Log($"Message sent to {user.FirstName} {user.LastName}");
+                    Log(message);
+                }
+                else {
+                    Log("offline");
+                    times = 0;
+                }
+            });
+        }
+        #endregion
+
         private void Log(string logMessage)
         {
             Logger?.Log(logMessage);
         }
 
-        private string GetMessage(int times)
+        /// <summary>
+        /// Выбирает фразу в зависимости от счетчика
+        /// </summary>
+        /// <param name="times">Счетчик кол-ва отправленных подряд сообщений</param>
+        /// <returns></returns>
+        private string GetPhrase(int times)
         {
             times = times < settings.Phrases.Length - 1 ? times : settings.Phrases.Length - 1;
 
             return settings.Phrases[times];
         }
 
-        private string GetString(string name, TimeSpan time)
+        /// <summary>
+        /// Выдает строку сообщения о событии
+        /// </summary>
+        /// <param name="name">Имя события</param>
+        /// <param name="timeSpan">Кол-во оставшегося времени</param>
+        /// <returns></returns>
+        private string GetAnnunciationMessage(string name, TimeSpan timeSpan)
         {
-            return $"До {name.ToUpper()} {left.GetWord(time.Days)} {time.Days} {days.GetWord(time.Days)}!";
+            // Проверка формата вывода времени
+            string time = string.Empty;
+
+            if (days != null) {
+                time += timeSpan.Days + " " + days.GetWord(timeSpan.Days);
+            }
+
+            if (hours != null) {
+                time += " " + timeSpan.Hours + " " + hours.GetWord(timeSpan.Hours);
+            }
+
+            if (minutes != null) {
+                time += " " + timeSpan.Minutes + " " + minutes.GetWord(timeSpan.Minutes);
+            }
+
+            return $"До {name.ToUpper()} {left.GetWord(timeSpan.Days)} {time}!";
         }
     }
 }

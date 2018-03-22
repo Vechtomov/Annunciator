@@ -100,6 +100,7 @@
     <Compile Include="Log\NowhereLogger.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Settings\MultipleAnnunciatorsSettings.cs" />
     <Compile Include="VkAnnunciator.cs" />
     <Compile Include="Settings\VkSettings.cs" />
     <Compile Include="Word.cs" />
