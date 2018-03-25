@@ -3,7 +3,7 @@ using VkNet.Enums.Filters;
 using VkNet.Model.RequestParams;
 using System.Linq;
 using System;
-using VkAnnunciator.Log;
+using VkAnnunciator.Loggers;
 using System.Threading;
 using VkAnnunciator.Settings;
 using System.Threading.Tasks;
@@ -15,28 +15,54 @@ namespace Annunciator
     /// </summary>
     public class VkAnnunciator
     {
+        /// <summary>
+        /// API для работы с вк
+        /// </summary>
         private VkApi vkApi = new VkApi();
 
+        /// <summary>
+        /// Настройки вк
+        /// </summary>
         private VkSettings vk;
+
+        /// <summary>
+        /// Настройки сигнализатора
+        /// </summary>
         private AnnunciatorSettings settings;
 
+        /// <summary>
+        /// Дата последней отправки фразы
+        /// </summary>
         private DateTime lastPhrasesSend = new DateTime(2000, 1, 1);
+
+        /// <summary>
+        /// Дата последнего уведомительного сообщения
+        /// </summary>
         private DateTime lastSubjectSend = new DateTime(2000, 1, 1);
 
+        /// <summary>
+        /// Сколько фраз было отправлено подряд
+        /// </summary>
         private int times = 0;
+
+        // Вспомогательные объекты для отправки корректного сообщения
         private Word days = null;
         private Word hours = null;
         private Word minutes = null;
         private Word left = new Word("остался", "осталось", "осталось");
 
-        private ILogger Logger;
+        /// <summary>
+        /// Логгер
+        /// </summary>
+        private ILogger logger;
 
         public VkAnnunciator(AnnunciatorSettings settings, VkSettings vk, ILogger logger)
         {
             this.settings = settings;
             this.vk = vk;
-            Logger = logger;
+            this.logger = logger;
 
+            // Авторизация вк
             ApiAuthParams param = new ApiAuthParams {
                 ApplicationId = this.vk.AppId,
                 Login = this.vk.Login,
@@ -46,6 +72,8 @@ namespace Annunciator
 
             vkApi.Authorize(param);
 
+
+            // Проверка формата времени уведомления
             if (settings.AnnunciationFormat.Contains("d"))
                 days = new Word("день", "дня", "дней");
 
@@ -55,8 +83,13 @@ namespace Annunciator
             if (settings.AnnunciationFormat.Contains("m"))
                 minutes = new Word("минута", "минуты", "минут");
 
+            // Логируем
             Log($"Initialize annunciator: {this.settings.Id}");
         }
+
+        /// <summary>
+        /// Запуск сигнализатора
+        /// </summary>
         public void Start()
         {
             while (true) {
@@ -72,6 +105,9 @@ namespace Annunciator
             }
         }
 
+        /// <summary>
+        /// Метод для проверки онлайна пользователя и отправки сообщения
+        /// </summary>
         public void Check()
         {
 
@@ -111,6 +147,7 @@ namespace Annunciator
                     UserId = user.Id
                 });
 
+                // Обновляем дату последней отправки
                 if (isSubjectSend) {
                     lastSubjectSend = DateTime.Now;
                 }
@@ -118,7 +155,7 @@ namespace Annunciator
                     lastPhrasesSend = DateTime.Now;
                 }
 
-                // Логируем
+                // Логгируем
                 Log($"Message sent to {user.FirstName} {user.LastName}");
                 Log(message);
             }
@@ -129,6 +166,7 @@ namespace Annunciator
         }
 
         #region Async
+        // Аснихронные методы (пока не работают)
         public async Task StartAsync()
         {
             while (true) {
@@ -143,7 +181,7 @@ namespace Annunciator
                 }
             }
         }
-
+        
         public async Task CheckAsync()
         {
             await Task.Run(async () => {
@@ -207,7 +245,7 @@ namespace Annunciator
 
         private void Log(string logMessage)
         {
-            Logger?.Log(logMessage);
+            logger?.Log(logMessage);
         }
 
         /// <summary>

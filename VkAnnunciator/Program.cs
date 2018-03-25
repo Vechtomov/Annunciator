@@ -1,5 +1,5 @@
 ﻿using System;
-using VkAnnunciator.Log;
+using VkAnnunciator.Loggers;
 using VkAnnunciator.Settings;
 using System.IO;
 using Newtonsoft.Json;
@@ -10,6 +10,7 @@ namespace Annunciator
 {
     class Program
     {
+        // Логгер приложения (используется для логгирования ошибок)
         static ILogger applicationLogger = InitializeFileLogger("Application");
 
         static void Main(string[] args)
