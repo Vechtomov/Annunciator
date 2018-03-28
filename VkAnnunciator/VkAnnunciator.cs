@@ -110,7 +110,6 @@ namespace Annunciator
         /// </summary>
         public void Check()
         {
-
             // Если с последней отправки прошло меньше MessagesInterval минут, то ничего не делаем
             if ((DateTime.Now - lastPhrasesSend) < settings.PhrasesInterval) {
                 Log($"After the last sending has gone {Convert.ToInt32((DateTime.Now - lastPhrasesSend).TotalMinutes)} minutes.");
@@ -166,7 +165,7 @@ namespace Annunciator
         }
 
         #region Async
-        // Аснихронные методы (пока не работают)
+        // Аснихронные методы
         public async Task StartAsync()
         {
             while (true) {
@@ -181,65 +180,63 @@ namespace Annunciator
                 }
             }
         }
-        
+
         public async Task CheckAsync()
         {
-            await Task.Run(async () => {
-                // Если с последней отправки прошло меньше MessagesInterval минут, то ничего не делаем
-                if ((DateTime.Now - lastPhrasesSend) < settings.PhrasesInterval) {
-                    Log($"After the last sending has gone {Convert.ToInt32((DateTime.Now - lastPhrasesSend).TotalMinutes)} minutes.");
-                    return;
-                }
+            // Если с последней отправки прошло меньше MessagesInterval минут, то ничего не делаем
+            if ((DateTime.Now - lastPhrasesSend) < settings.PhrasesInterval) {
+                Log($"After the last sending has gone {Convert.ToInt32((DateTime.Now - lastPhrasesSend).TotalMinutes)} minutes.");
+                return;
+            }
 
-                // Находим пользователя
+            // Находим пользователя
 
-                var users = await vkApi.Users.GetAsync(new long[] { settings.Id }, ProfileFields.Online | ProfileFields.OnlineMobile);
-                var user = users.FirstOrDefault();
+            var users = await vkApi.Users.GetAsync(new long[] { settings.Id }, ProfileFields.Online | ProfileFields.OnlineMobile);
+            var user = users.FirstOrDefault();
 
-                // Если пользователь онлайн, то отправляем ему сообщение
-                //if ((user.Online.HasValue && user.Online.Value) || (user.OnlineMobile.HasValue && user.OnlineMobile.Value)) {
-                if ((user.Online != null && (bool)user.Online) || (user.OnlineMobile != null && (bool)user.OnlineMobile)) {
+            // Если пользователь онлайн, то отправляем ему сообщение
+            //if ((user.Online.HasValue && user.Online.Value) || (user.OnlineMobile.HasValue && user.OnlineMobile.Value)) {
+            if ((user.Online != null && (bool)user.Online) || (user.OnlineMobile != null && (bool)user.OnlineMobile)) {
 
-                    string message = string.Empty;
-                    bool isSubjectSend = false;
+                string message = string.Empty;
+                bool isSubjectSend = false;
 
-                    // Если с последней отправки сообщения о событии прошло больше AnnunciationMessagesInterval, 
-                    // то устанавливаем сообщение и флаг
-                    if ((DateTime.Now - lastSubjectSend) > settings.AnnunciationMessagesInterval) {
+                // Если с последней отправки сообщения о событии прошло больше AnnunciationMessagesInterval, 
+                // то устанавливаем сообщение и флаг
+                if ((DateTime.Now - lastSubjectSend) > settings.AnnunciationMessagesInterval) {
 
-                        foreach (var subject in settings.Subjects) {
-                            TimeSpan timeSpan = subject.Date - DateTime.Now;
-                            message += GetAnnunciationMessage(subject.GenitiveName, timeSpan) + Environment.NewLine;
-                        }
-
-                        isSubjectSend = true;
-                    }
-                    else {
-                        message = GetPhrase(times++);
+                    foreach (var subject in settings.Subjects) {
+                        TimeSpan timeSpan = subject.Date - DateTime.Now;
+                        message += GetAnnunciationMessage(subject.GenitiveName, timeSpan) + Environment.NewLine;
                     }
 
-                    // Отправка сообщения
-                    await vkApi.Messages.SendAsync(new MessagesSendParams {
-                        Message = message,
-                        UserId = user.Id
-                    });
-
-                    if (isSubjectSend) {
-                        lastSubjectSend = DateTime.Now;
-                    }
-                    else {
-                        lastPhrasesSend = DateTime.Now;
-                    }
-
-                    // Логируем
-                    Log($"Message sent to {user.FirstName} {user.LastName}");
-                    Log(message);
+                    isSubjectSend = true;
                 }
                 else {
-                    Log("offline");
-                    times = 0;
+                    message = GetPhrase(times++);
                 }
-            });
+
+                // Отправка сообщения
+                await vkApi.Messages.SendAsync(new MessagesSendParams {
+                    Message = message,
+                    UserId = user.Id
+                });
+
+                if (isSubjectSend) {
+                    lastSubjectSend = DateTime.Now;
+                }
+                else {
+                    lastPhrasesSend = DateTime.Now;
+                }
+
+                // Логируем
+                Log($"Message sent to {user.FirstName} {user.LastName}");
+                Log(message);
+            }
+            else {
+                Log("offline");
+                times = 0;
+            }
         }
         #endregion
 

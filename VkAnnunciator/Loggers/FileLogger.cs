@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace VkAnnunciator.Loggers
 {
@@ -41,7 +42,7 @@ namespace VkAnnunciator.Loggers
             lock (locker) {
                 byte[] buff = Encoding.UTF8.GetBytes($"{DateTime.Now.ToShortTimeString()} : {logMessage}{Environment.NewLine}");
                 using (FileStream fileStream = new FileStream($"{directory}\\{filename}.txt", FileMode.Append, FileAccess.Write)) {
-                    fileStream.Write(buff, 0, buff.Length);
+                    fileStream.WriteAsync(buff, 0, buff.Length);
                 }
             }
         }
